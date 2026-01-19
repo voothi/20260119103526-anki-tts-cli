@@ -1,5 +1,9 @@
 # Release Notes
 
+## [20260119114726] - 2026-01-19
+### Changed
+- Improved [`README.md`](README.md) with a Table of Contents and "Return to top" navigation links.
+
 ## [20260119113553] - 2026-01-19
 ### Added
 - Added support for local [`config.json`](config.json) to allow overriding Anki addon settings.
