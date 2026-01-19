@@ -50,6 +50,46 @@ def sanitize_filename(text):
     text = re.sub(r'[<>:"/\\|?*]', '', text)
     return text.strip().lower()
 
+def get_cache_dir(conf):
+    persistent_enabled = conf.get("persistent_cache_enabled", False)
+    custom_path = conf.get("persistent_cache_path", "").strip()
+    
+    if persistent_enabled:
+        if custom_path:
+            cache_dir = custom_path
+        else:
+            cache_dir = os.path.join(ANKI_ADDON_PATH, "user_cache")
+        
+        if not os.path.exists(cache_dir):
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+            except OSError:
+                return None
+        return cache_dir
+    return None
+
+def load_state(cache_dir, state_name):
+    if not cache_dir:
+        return {}
+    state_file = os.path.join(cache_dir, f"{state_name}_state.json")
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_state(cache_dir, state_name, state):
+    if not cache_dir:
+        return
+    state_file = os.path.join(cache_dir, f"{state_name}_state.json")
+    try:
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
 def find_in_audio_dictionary(text, lang, conf):
     if not conf.get("audio_dictionary_enabled", False):
         return None
@@ -87,8 +127,31 @@ def find_in_audio_dictionary(text, lang, conf):
     if not valid_candidates:
         return None
 
-    # For CLI, we default to the first candidate (no cycling state persistence yet)
-    return valid_candidates[0]
+    # --- Persistence & Rotation Logic ---
+    cache_dir = get_cache_dir(conf)
+    cycle_enabled = conf.get("audio_dictionary_cycle_enabled", False)
+    cycle_limit = max(1, conf.get("audio_dictionary_cycle_limit", 2))
+    
+    effective_count = min(len(valid_candidates), cycle_limit)
+    
+    if cycle_enabled and effective_count > 1:
+        state = load_state(cache_dir, "audio_cycle")
+        key = f"{text}|{lang}"
+        current_idx = state.get(key, 0)
+        
+        if current_idx >= effective_count:
+            current_idx = 0
+            
+        selected_file = valid_candidates[current_idx]
+        
+        # Update for next time
+        state[key] = (current_idx + 1) % effective_count
+        save_state(cache_dir, "audio_cycle", state)
+        
+        print(f"Audio Dictionary: Playing file {current_idx + 1}/{effective_count}: {selected_file}")
+        return selected_file
+    else:
+        return valid_candidates[0]
 
 def run_piper_tts(text, lang, output_path, conf):
     python_exe = conf.get("piper_python_path")
@@ -286,15 +349,29 @@ def main():
     enable_gtts = conf.get("gtts_enabled", True)
     enable_piper = conf.get("piper_enabled", True)
     default_engine = conf.get("tts_engine", "gTTS") # gTTS or Piper
+    cycle_tts = conf.get("tts_cycle_enabled", False)
 
     final_file = None
 
-    # Priority logic (Using simpler fallback than Anki's cyclic complex state)
-    # If default is Piper, try Piper -> gTTS
-    # If default is gTTS, try gTTS -> Piper
-    
+    # Determine engine order with cycling support
+    current_engine = default_engine
+    if cycle_tts and enable_gtts and enable_piper:
+        cache_dir = get_cache_dir(conf)
+        state = load_state(cache_dir, "tts_cycle")
+        key = f"{text}|{lang}"
+        
+        if key in state:
+            current_engine = state[key]
+        else:
+            current_engine = default_engine
+        
+        # Toggle for next time
+        state[key] = "Piper" if current_engine == "gTTS" else "gTTS"
+        save_state(cache_dir, "tts_cycle", state)
+        print(f"TTS Cycle: Selected {current_engine}")
+
     engines_to_try = []
-    if default_engine == "Piper":
+    if current_engine == "Piper":
         if enable_piper: engines_to_try.append("Piper")
         if enable_gtts: engines_to_try.append("gTTS")
     else:
