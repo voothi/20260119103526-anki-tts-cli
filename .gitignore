@@ -1,0 +1,35 @@
+# Crash dumps
+crash/
+crash/*.dmp
+
+# Index/cache (regeneratable)
+index/
+
+# History & favorites (transient, user-specific)
+.history/
+history
+favorites
+
+# Backups
+a/
+*.bak
+*.old
+*.tmp
+* [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.log
+history
+gd_log.txt
+gd_log.txt
+
+gd_log.txt
+
+20231001193911-tts/
+20240411110510-autohotkey/
+20241206010110-piper-tts/
+20250421115831-anki-gtts-player/
+20260106194644-goldendict-roaming-data/
+20260113230706-goldendict/
